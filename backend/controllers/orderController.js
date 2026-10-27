@@ -9,11 +9,15 @@ const frontendUrl =
 // placing user order for frontend
 const placeOrder = async (req, res) => {
   try {
-    const newOrder = new orderModel({
-      userId: req.body.userId,
+    const totals=CalculateTotals(subtotal, req.body.address);
+    const newOrder= new orderModel({
+      userId:req.body.userId,
       items: req.body.items,
-      amount: req.body.amount,
-      address: req.body.address,
+      address:req.body.address,
+      subtotal:totals.subtotal,
+      discountAmount: totals.discountAmount,
+      deliveryFee:totals.deliveryFee,
+      amount:totals.finalAmount,
     });
     await newOrder.save();
     await userModel.findByIdAndUpdate(req.body.userId, { cartData: {} });
@@ -114,5 +118,26 @@ const updateStatus = async (req, res) => {
     res.json({ success: false, message: "Error" });
   }
 };
+
+import {discountRule} from "../config/discount.js";
+const DELIVERY_FEE =2;
+
+const CalculateTotals=(subtotal,address) => {
+  const eligible=
+  address?.city?.trim().toLowerCase()===discountRule.city.trim().toLowerCase();
+  const discountAmount=eligible
+  ? Math.round(subtotal*discountRule.percent)/100 :0;
+  const finalAmount=subtotal-discountAmount+DELIVERY_FEE;
+  return {subtotal,discountAmount , deliveryFee: DELIVERY_FEE, finalAmount}
+}
+
+const previewOrder= async(req,res)=>{
+  const {items,address}=req.body;
+  const subtotal=items.reduce((sum,i) =>sum +i.price*i.quantity,0);
+  res.json ({success :true, ...CalculateTotals(subtotal,address)})
+};
+
+
+
 
 export { placeOrder, verifyOrder, userOrders, listOrders, updateStatus };
