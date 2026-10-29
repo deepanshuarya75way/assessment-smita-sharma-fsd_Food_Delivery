@@ -3,7 +3,8 @@ import "./PlaceOrder.css";
 import { StoreContext } from "../../context/StoreContext";
 import axios from "axios";
 import { toast } from "react-toastify";
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom';
+
 
 const PlaceOrder = () => {
   const navigate= useNavigate();
@@ -38,11 +39,14 @@ const PlaceOrder = () => {
         orderItems.push(itemInfo);
       }
     });
+
     let orderData = {
       address: data,
       items: orderItems,
       amount: getTotalCartAmount() + 2,
     };
+    const city=req.body.address?.city?.trim().toLowerCase();
+
     
     let response= await axios.post(url+"/api/order/place",orderData,{headers:{token}});
     if(response.data.success){
@@ -53,7 +57,39 @@ const PlaceOrder = () => {
     }
   };
 
+
+  const [discountDetails,setDiscountDetails]=useState(null);
+
+  const subtotal=getTotalCartAmount();
+  const deliveryFee=subtotal==0?0:40;
+
   useEffect(()=>{
+
+    const controller=new AbortController();
+    if(!data.city.trim()){
+      setDiscountDetails(null);
+      return;
+    }
+    const fetchDiscount =async()=>{
+    try{
+      const response= await axios.post( `${url}/api/discount/calculate`,{
+        city:data.city,
+        subtotal:deliveryFee
+      },
+      {
+        signal:controller.signal
+      }
+      );
+      setDiscountDetails(response.data);
+    }catch(error){
+      if(error.code!=="ERR_Cancelled"){
+        console.error("Discount calculation Failed",error);
+        setDiscountDetails(null);
+      }
+    }
+  }
+  fetchDiscount();
+
     if(!token){
       toast.error("Please Login first")
       navigate("/cart")
@@ -62,7 +98,14 @@ const PlaceOrder = () => {
       toast.error("Please Add Items to Cart");
       navigate("/cart")
     }
+
+    return ()=>{
+      controller.abort();
+    },[data.city,subtotal,deliveryFee,url]
   },[token])
+
+
+
   return (
     <form className="place-order" onSubmit={placeOrder}>
       <div className="place-order-left">
@@ -152,18 +195,24 @@ const PlaceOrder = () => {
           <div>
             <div className="cart-total-details">
               <p>Subtotals</p>
-              <p>${getTotalCartAmount()}</p>
+              <p>${subtotal.toFixed(2)}</p>
+              
             </div>
             <hr />
             <div className="cart-total-details">
+
+              <p>Discount</p>
+              <p>{discountDetails?.discountAmount??0}</p>
+              </div>
+              <div>
               <p>Delivery Fee</p>
-              <p>${getTotalCartAmount() === 0 ? 0 : 2}</p>
+              <p>${deliveryFee.toFixed(2)}</p>
             </div>
             <hr />
             <div className="cart-total-details">
               <b>Total</b>
               <b>
-                ${getTotalCartAmount() === 0 ? 0 : getTotalCartAmount() + 2}
+                ${discount?.finalTotal??subtotal+deliveryFee}
               </b>
             </div>
           </div>

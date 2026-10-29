@@ -1,6 +1,8 @@
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
 import Stripe from "stripe";
+import Discount from "../models/discountModel.js";
+import foodModel from "../models/foodModel.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const frontendUrl =
@@ -8,6 +10,50 @@ const frontendUrl =
 
 // placing user order for frontend
 const placeOrder = async (req, res) => {
+
+  const {items, address}=req.body;
+  const city=address?.city?.trim().toLowerCase();
+  if(!city|| !Array.isArray(items) ||!items.length){
+    return res.status(400).json({
+      success:false,
+      message:"valid address and items are required",
+    });
+  }
+  let subtotal=0;
+  for(const item of items){
+    const food =await foodModel.findById(item_id);
+    if(
+      !food||
+      !Number.isInteger(item.quantity) || item.quantity<=0
+    ){
+      return res.status(400).json({
+        success:false,
+        message:"invalid item cart",
+      }
+      );
+    }
+    subtotal+=Number(food.price)*item.quantity;
+  }
+
+
+  const discountRule=await Discount.findOne({
+    city,
+    isActive:true,
+  });
+  const percentage=discountRule?.percentage??0;
+  const discountAmount=Math.round(subtotal*percentage)/100;
+
+  const deliveryFee=40;
+
+  const finalTotal=
+  Math.round((subtotal-discountAmount+deliveryFee)*100)/100;
+
+  const order=new orderModel({
+    userId:req.body.userId,
+    items, address,subtotal,discountPercentage:percentage,discountAmount, deliveryFee, amount:finalTotal
+  });
+  await order.save();
+
   try {
     const newOrder = new orderModel({
       userId: req.body.userId,
@@ -113,6 +159,16 @@ const updateStatus = async (req, res) => {
     console.log(error);
     res.json({ success: false, message: "Error" });
   }
+
+  const city =req.body.address?.city?.trim().toLowerCase();
+  const discount=await Discount.findOne({
+    city,isActive:true,
+  })
+ const percentage=discount?.percentage||0;
+ const discountAmount=Math.round(subtotal*percentage)/100;
+ const finalAmount=subtotal-discountAmount+deliveryFee;
+
+
 };
 
 export { placeOrder, verifyOrder, userOrders, listOrders, updateStatus };
